@@ -3,11 +3,16 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getGoals } from '@/lib/api';
 
+interface Goal {
+  id: number;
+  title: string;
+}
+
 export default function HomePage() {
   const router = useRouter();
   useEffect(() => {
     getGoals()
-      .then((goals: unknown[]) => {
+      .then((goals: Goal[]) => {
         if (goals && goals.length > 0) {
           router.replace('/today');
         } else {

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <body>
         <Providers>
           <header className="border-b bg-background">
             <nav className="container mx-auto px-4 h-14 flex items-center gap-6">
