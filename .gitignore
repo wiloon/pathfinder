@@ -27,6 +27,19 @@ go.work.sum
 # env file
 .env
 
+# Go build artifacts
+pathfinder-api/pathfinder-api
+pathfinder-api/*.db
+pathfinder-api/*.db-shm
+pathfinder-api/*.db-wal
+
+# Node.js / Next.js
+pathfinder-ui/node_modules/
+pathfinder-ui/.next/
+pathfinder-ui/out/
+pathfinder-ui/.env.local
+pathfinder-ui/.env*.local
+
 # Editor/IDE
 # .idea/
 # .vscode/

@@ -1,0 +1,11 @@
+[server]
+port = "8080"
+session_secret = "pathfinder-secret-key-change-in-production"
+
+[database]
+dsn = "pathfinder.db"
+
+[ai]
+api_key = "your-minimax-api-key-here"
+model = "MiniMax-Text-01"
+base_url = "https://api.minimaxi.chat/v1"

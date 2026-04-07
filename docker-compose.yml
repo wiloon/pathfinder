@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: ./pathfinder-api
+      dockerfile: Containerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - api-data:/root/data
+    environment:
+      - GIN_MODE=release
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./pathfinder-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  api-data:
