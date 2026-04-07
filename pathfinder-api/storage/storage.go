@@ -15,5 +15,7 @@ func Init(dsn string) {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	DB.AutoMigrate(&Goal{}, &GoalAttachment{}, &DailyPlan{}, &Task{}, &Event{}, &EventAttachment{}, &CheckIn{})
+	if err := DB.AutoMigrate(&Goal{}, &GoalAttachment{}, &DailyPlan{}, &Task{}, &Event{}, &EventAttachment{}, &CheckIn{}); err != nil {
+		log.Fatalf("failed to auto-migrate database schema: %v", err)
+	}
 }
