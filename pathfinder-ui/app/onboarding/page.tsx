@@ -10,18 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { createGoal } from '@/lib/api';
+import { createGoal, updateUserProfile } from '@/lib/api';
 import { toast } from 'sonner';
 
 const GOAL_TYPES = ['career', 'health', 'education', 'personal', 'other'];
-const TIMELINES = ['3 months', '6 months', '1 year', 'custom'];
 
 const primaryGoalSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
   description: z.string().optional(),
   type: z.string().min(1, 'Select a goal type'),
-  timeline: z.string().min(1, 'Select a timeline'),
-  customTimeline: z.string().optional(),
   dailyHours: z.number().min(1).max(12),
   preferredStartTime: z.string().optional(),
   image: z.any().optional(),
@@ -39,27 +36,23 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState('');
-  const [selectedTimeline, setSelectedTimeline] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [bio, setBio] = useState('');
   const [secondaryGoals, setSecondaryGoals] = useState<SecondaryGoal[]>([]);
   const [newSecondaryGoal, setNewSecondaryGoal] = useState<SecondaryGoal>({ title: '', description: '', type: 'personal' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, formState: { errors }, setValue } = useForm<PrimaryGoalForm>({
     resolver: zodResolver(primaryGoalSchema),
-    defaultValues: { dailyHours: 2, type: '', timeline: '' },
+    defaultValues: { dailyHours: 8, type: '', preferredStartTime: '08:00' },
   });
 
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   const handleTypeSelect = (type: string) => {
     setSelectedType(type);
     setValue('type', type);
-  };
-
-  const handleTimelineSelect = (timeline: string) => {
-    setSelectedTimeline(timeline);
-    setValue('timeline', timeline);
   };
 
   const handleNextStep = () => {
@@ -89,8 +82,7 @@ export default function OnboardingPage() {
       if (data.description) formData.append('description', data.description);
       formData.append('goal_type', data.type);
       formData.append('is_primary', 'true');
-      const timelineValue = data.timeline === 'custom' ? (data.customTimeline || '') : data.timeline;
-      formData.append('timeline', timelineValue);
+      formData.append('timeline', '1 week');
       formData.append('daily_hours', String(data.dailyHours));
       if (data.preferredStartTime) formData.append('preferred_start_time', data.preferredStartTime);
       if (imageFile) formData.append('background_image', imageFile);
@@ -104,6 +96,14 @@ export default function OnboardingPage() {
           goal_type: sg.type,
           is_primary: false,
         });
+      }
+
+      // Save user profile (bio + resume)
+      if (bio || resumeFile) {
+        const profileData = new FormData();
+        if (bio) profileData.append('bio', bio);
+        if (resumeFile) profileData.append('resume', resumeFile);
+        await updateUserProfile(profileData).catch(() => {/* non-fatal */});
       }
 
       toast.success('Goals created! Welcome to Pathfinder!');
@@ -201,40 +201,20 @@ export default function OnboardingPage() {
           </Card>
         )}
 
-        {/* Step 3: Timeline */}
+        {/* Step 3: Timeline (auto 1 week) */}
         {step === 3 && (
           <Card>
             <CardHeader>
-              <CardTitle>Set your timeline</CardTitle>
-              <CardDescription>When do you want to achieve this goal?</CardDescription>
+              <CardTitle>Let&apos;s plan your first week</CardTitle>
+              <CardDescription>We&apos;ll start with a one-week plan to get you moving. You can set longer-term milestones later.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3">
-                {TIMELINES.map((timeline) => (
-                  <button
-                    key={timeline}
-                    type="button"
-                    onClick={() => handleTimelineSelect(timeline)}
-                    className={`p-4 rounded-lg border-2 text-left font-medium transition-all capitalize ${
-                      selectedTimeline === timeline
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    {timeline}
-                  </button>
-                ))}
+              <div className="rounded-lg border bg-primary/5 p-4 text-sm text-muted-foreground">
+                📅 Your first plan will cover <strong className="text-foreground">7 days</strong>. After completing it, you can extend your timeline and add milestones.
               </div>
-              {selectedTimeline === 'custom' && (
-                <div className="mt-4">
-                  <Label htmlFor="customTimeline">Custom Timeline</Label>
-                  <Input id="customTimeline" {...register('customTimeline')} placeholder="e.g., 18 months" className="mt-1" />
-                </div>
-              )}
-              {errors.timeline && <p className="text-destructive text-sm mt-2">{errors.timeline.message}</p>}
               <div className="flex justify-between mt-6">
                 <Button type="button" variant="outline" onClick={handlePrevStep}>Back</Button>
-                <Button type="button" onClick={handleNextStep} disabled={!selectedTimeline}>Next</Button>
+                <Button type="button" onClick={handleNextStep}>Next</Button>
               </div>
             </CardContent>
           </Card>
@@ -249,19 +229,19 @@ export default function OnboardingPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="dailyHours">Daily Available Hours (1-12)</Label>
+                <Label htmlFor="dailyHours">Daily Available Hours (1–12)</Label>
                 <Input
                   id="dailyHours"
                   type="number"
                   min={1}
                   max={12}
-                  {...register('dailyHours')}
+                  {...register('dailyHours', { valueAsNumber: true })}
                   className="mt-1 w-32"
                 />
                 {errors.dailyHours && <p className="text-destructive text-sm mt-1">{errors.dailyHours.message}</p>}
               </div>
               <div>
-                <Label htmlFor="preferredStartTime">Preferred Start Time (optional)</Label>
+                <Label htmlFor="preferredStartTime">Preferred Start Time</Label>
                 <Input
                   id="preferredStartTime"
                   type="time"
@@ -318,6 +298,44 @@ export default function OnboardingPage() {
                 <Button type="button" variant="outline" onClick={addSecondaryGoal} disabled={!newSecondaryGoal.title.trim()}>
                   Add Secondary Goal
                 </Button>
+              </div>
+              <div className="flex justify-between mt-6">
+                <Button type="button" variant="outline" onClick={handlePrevStep}>Back</Button>
+                <Button type="button" onClick={handleNextStep}>Next</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 6: About You */}
+        {step === 6 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>About You (Optional)</CardTitle>
+              <CardDescription>Help Pathfinder understand your background to generate better plans.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="bio">Bio / Background</Label>
+                <Textarea
+                  id="bio"
+                  placeholder="e.g., I'm a software engineer with 3 years of experience, looking to transition into machine learning..."
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="mt-1"
+                  rows={5}
+                />
+              </div>
+              <div>
+                <Label htmlFor="resume">Upload Resume (optional)</Label>
+                <Input
+                  id="resume"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  className="mt-1"
+                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Supported formats: PDF, DOC, DOCX, TXT</p>
               </div>
               <div className="flex justify-between mt-6">
                 <Button type="button" variant="outline" onClick={handlePrevStep}>Back</Button>

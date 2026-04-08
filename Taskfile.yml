@@ -1,0 +1,51 @@
+version: "3"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  api:
+    desc: Start the backend API server locally
+    dir: pathfinder-api
+    cmds:
+      - go run main.go
+
+  ui:
+    desc: Start the frontend dev server locally
+    dir: pathfinder-ui
+    cmds:
+      - pnpm install
+      - pnpm dev
+
+  test:
+    desc: Run all backend unit and integration tests
+    dir: pathfinder-api
+    cmds:
+      - go test ./user/ ./goal/ ./checkin/ -v -count=1
+
+  test:short:
+    desc: Run backend tests (no verbose output)
+    dir: pathfinder-api
+    cmds:
+      - go test ./user/ ./goal/ ./checkin/ -count=1
+
+  test:cover:
+    desc: Run backend tests with coverage report
+    dir: pathfinder-api
+    cmds:
+      - go test ./user/ ./goal/ ./checkin/ -count=1 -coverprofile=coverage.out
+      - go tool cover -func=coverage.out
+
+  test:e2e:install:
+    desc: Install Playwright browsers (run once before test:e2e)
+    dir: pathfinder-ui
+    cmds:
+      - pnpm exec playwright install
+
+  test:e2e:
+    desc: Run Playwright E2E tests (requires dev server and browsers installed)
+    dir: pathfinder-ui
+    cmds:
+      - pnpm exec playwright install
+      - pnpm test:e2e

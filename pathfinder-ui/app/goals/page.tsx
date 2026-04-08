@@ -4,14 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { getGoals, createGoal, updateGoal, deleteGoal, setPrimaryGoal } from '@/lib/api';
+import { getGoals, updateGoal, deleteGoal, setPrimaryGoal } from '@/lib/api';
+import { AddGoalDialog } from '@/components/add-goal-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 const goalSchema = z.object({
@@ -76,7 +77,6 @@ function GoalCard({ goal, onEdit, onDelete, onSetPrimary }: {
 export default function GoalsPage() {
   const queryClient = useQueryClient();
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
   const { data: goals = [], isLoading } = useQuery<Goal[]>({
@@ -84,14 +84,7 @@ export default function GoalsPage() {
     queryFn: getGoals,
   });
 
-  const { register: regAdd, handleSubmit: handleAdd, reset: resetAdd, formState: { errors: addErrors } } = useForm<GoalForm>({ resolver: zodResolver(goalSchema) });
   const { register: regEdit, handleSubmit: handleEdit, setValue: setEditValue } = useForm<GoalForm>({ resolver: zodResolver(goalSchema) });
-
-  const createMutation = useMutation({
-    mutationFn: createGoal,
-    onSuccess: () => { toast.success('Goal created!'); queryClient.invalidateQueries({ queryKey: ['goals'] }); setAddOpen(false); resetAdd(); },
-    onError: () => toast.error('Failed to create goal'),
-  });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: GoalForm }) => updateGoal(id, data),
@@ -127,40 +120,7 @@ export default function GoalsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Goals</h1>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button>Add Goal</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add New Goal</DialogTitle></DialogHeader>
-            <form onSubmit={handleAdd((data) => createMutation.mutate(data))} className="space-y-4">
-              <div>
-                <Label>Title *</Label>
-                <Input {...regAdd('title')} placeholder="Goal title" className="mt-1" />
-                {addErrors.title && <p className="text-destructive text-sm mt-1">{addErrors.title.message}</p>}
-              </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea {...regAdd('description')} placeholder="Description" className="mt-1" rows={3} />
-              </div>
-              <div>
-                <Label>Type *</Label>
-                <select className="w-full border rounded-md px-3 py-2 text-sm mt-1 bg-background" {...regAdd('goal_type')}>
-                  <option value="">Select type...</option>
-                  {GOAL_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
-                </select>
-                {addErrors.goal_type && <p className="text-destructive text-sm mt-1">{addErrors.goal_type.message}</p>}
-              </div>
-              <div>
-                <Label>Timeline</Label>
-                <Input {...regAdd('timeline')} placeholder="e.g., 6 months" className="mt-1" />
-              </div>
-              <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Creating...' : 'Create Goal'}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <AddGoalDialog />
       </div>
 
       {goals.length === 0 ? (

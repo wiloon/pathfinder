@@ -10,10 +10,9 @@ import (
 	"pathfinder-api/storage"
 )
 
-const userID = "local"
-
 // GetTodayCheckin handles GET /api/checkin/today
 func GetTodayCheckin(c *gin.Context) {
+	userID := c.GetString("user_id")
 	today := time.Now().Format("2006-01-02")
 
 	var ci storage.CheckIn
@@ -28,6 +27,7 @@ func GetTodayCheckin(c *gin.Context) {
 
 // SubmitCheckin handles POST /api/checkin
 func SubmitCheckin(c *gin.Context) {
+	userID := c.GetString("user_id")
 	var body struct {
 		Date          string `json:"date"`
 		Completed     string `json:"completed"`

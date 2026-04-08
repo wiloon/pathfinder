@@ -11,10 +11,9 @@ import (
 	"pathfinder-api/storage"
 )
 
-const userID = "local"
-
 // GetTodayPlan handles GET /api/plan/today
 func GetTodayPlan(c *gin.Context) {
+	userID := c.GetString("user_id")
 	today := time.Now().Format("2006-01-02")
 
 	var plan storage.DailyPlan
@@ -44,6 +43,7 @@ func GetTodayPlan(c *gin.Context) {
 
 // GeneratePlan handles POST /api/plan/generate
 func GeneratePlan(c *gin.Context) {
+	userID := c.GetString("user_id")
 	today := time.Now().Format("2006-01-02")
 
 	var plan storage.DailyPlan

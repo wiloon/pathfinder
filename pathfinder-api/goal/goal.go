@@ -13,10 +13,9 @@ import (
 	"pathfinder-api/storage"
 )
 
-const userID = "local"
-
 // CreateGoal handles POST /api/goals
 func CreateGoal(c *gin.Context) {
+	userID := c.GetString("user_id")
 	title := c.PostForm("title")
 	description := c.PostForm("description")
 	goalType := c.PostForm("type")
@@ -104,6 +103,7 @@ func CreateGoal(c *gin.Context) {
 
 // ListGoals handles GET /api/goals
 func ListGoals(c *gin.Context) {
+	userID := c.GetString("user_id")
 	var goals []storage.Goal
 	storage.DB.Where("user_id = ?", userID).Preload("Attachments").Find(&goals)
 
@@ -118,6 +118,7 @@ func ListGoals(c *gin.Context) {
 
 // UpdateGoal handles PUT /api/goals/:id
 func UpdateGoal(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -164,6 +165,7 @@ func UpdateGoal(c *gin.Context) {
 
 // DeleteGoal handles DELETE /api/goals/:id
 func DeleteGoal(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -183,6 +185,7 @@ func DeleteGoal(c *gin.Context) {
 
 // SetPrimaryGoal handles PUT /api/goals/:id/primary
 func SetPrimaryGoal(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})

@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { getTodayPlan, updateTask, generatePlan } from '@/lib/api';
+import { AddGoalDialog } from '@/components/add-goal-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -168,6 +169,9 @@ export default function TodayPage() {
           <Button asChild variant="outline" size="sm">
             <Link href="/events">Add Event</Link>
           </Button>
+          <AddGoalDialog
+            trigger={<Button variant="outline" size="sm">Add Goal</Button>}
+          />
           <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
             {generateMutation.isPending ? 'Regenerating...' : 'Regenerate Plan'}
           </Button>

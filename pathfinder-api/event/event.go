@@ -12,10 +12,9 @@ import (
 	"pathfinder-api/storage"
 )
 
-const userID = "local"
-
 // ListEvents handles GET /api/events
 func ListEvents(c *gin.Context) {
+	userID := c.GetString("user_id")
 	var events []storage.Event
 	storage.DB.Where("user_id = ? AND status = ?", userID, "upcoming").
 		Preload("Attachments").
@@ -26,6 +25,7 @@ func ListEvents(c *gin.Context) {
 
 // CreateEvent handles POST /api/events
 func CreateEvent(c *gin.Context) {
+	userID := c.GetString("user_id")
 	title := c.PostForm("title")
 	description := c.PostForm("description")
 	eventDate := c.PostForm("event_date")
@@ -111,6 +111,7 @@ func CreateEvent(c *gin.Context) {
 
 // DeleteEvent handles DELETE /api/events/:id
 func DeleteEvent(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -130,6 +131,7 @@ func DeleteEvent(c *gin.Context) {
 
 // SubmitRetro handles POST /api/events/:id/retro
 func SubmitRetro(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})

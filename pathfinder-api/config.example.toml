@@ -9,3 +9,10 @@ dsn = "pathfinder.db"
 api_key = ""
 model = "MiniMax-Text-01"
 base_url = "https://api.minimaxi.chat/v1"
+
+[resend]
+api_key = ""
+from = "Pathfinder <noreply@yourdomain.com>"
+
+[app]
+frontend_base_url = "http://localhost:3000"

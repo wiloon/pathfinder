@@ -5,6 +5,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
 // Goals
@@ -38,3 +39,27 @@ export const createEvent = (data: FormData | object) => {
 };
 export const deleteEvent = (id: number) => api.delete(`/api/events/${id}`).then(r => r.data);
 export const submitEventRetro = (id: number, data: object) => api.post(`/api/events/${id}/retro`, data).then(r => r.data);
+
+// Auth
+export const authRegister = (data: { username: string; password: string; email: string }) =>
+  api.post('/api/auth/register', data).then(r => r.data);
+export const authLogin = (data: { username: string; password: string }) =>
+  api.post('/api/auth/login', data).then(r => r.data);
+export const authLogout = () => api.post('/api/auth/logout').then(r => r.data);
+export const authGetMe = () =>
+  api.get('/api/auth/me').then(r => r.data).catch((err) => {
+    if (err?.response?.status === 401) return null;
+    throw err;
+  });
+export const authVerifyEmail = (token: string) =>
+  api.get(`/api/auth/verify-email?token=${encodeURIComponent(token)}`).then(r => r.data);
+export const authResendVerification = (email: string) =>
+  api.post('/api/auth/resend-verification', { email }).then(r => r.data);
+export const authForgotPassword = (email: string) =>
+  api.post('/api/auth/forgot-password', { email }).then(r => r.data);
+export const authResetPassword = (token: string, password: string) =>
+  api.post('/api/auth/reset-password', { token, password }).then(r => r.data);
+
+// User profile
+export const updateUserProfile = (data: FormData) =>
+  api.post('/api/user/profile', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);

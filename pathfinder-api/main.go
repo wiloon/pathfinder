@@ -12,17 +12,21 @@ import (
 
 	aiPkg "pathfinder-api/ai"
 	"pathfinder-api/checkin"
+	"pathfinder-api/email"
 	"pathfinder-api/event"
 	"pathfinder-api/goal"
 	"pathfinder-api/middleware"
 	"pathfinder-api/plan"
 	"pathfinder-api/storage"
+	"pathfinder-api/user"
 )
 
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
 	Database DatabaseConfig `toml:"database"`
 	AI       AIConfig       `toml:"ai"`
+	Resend   ResendConfig   `toml:"resend"`
+	App      AppConfig      `toml:"app"`
 }
 
 type ServerConfig struct {
@@ -38,6 +42,15 @@ type AIConfig struct {
 	APIKey  string `toml:"api_key"`
 	Model   string `toml:"model"`
 	BaseURL string `toml:"base_url"`
+}
+
+type ResendConfig struct {
+	APIKey string `toml:"api_key"`
+	From   string `toml:"from"`
+}
+
+type AppConfig struct {
+	FrontendBaseURL string `toml:"frontend_base_url"`
 }
 
 func loadConfig(path string) Config {
@@ -57,6 +70,8 @@ func main() {
 
 	storage.Init(cfg.Database.DSN)
 	middleware.InitSession(cfg.Server.SessionSecret)
+	user.InitSession(middleware.Store)
+	email.Init(cfg.Resend.APIKey, cfg.Resend.From, cfg.App.FrontendBaseURL)
 	aiPkg.Init(aiPkg.Config{
 		APIKey:  cfg.AI.APIKey,
 		Model:   cfg.AI.Model,
@@ -74,7 +89,7 @@ func main() {
 	}))
 	r.Use(middleware.Session())
 
-	api := r.Group("/api")
+	api := r.Group("/api", middleware.RequireAuth())
 	{
 		// Goals
 		api.POST("/goals", goal.CreateGoal)
@@ -101,7 +116,20 @@ func main() {
 		// Export / Import
 		api.GET("/export", exportHandler)
 		api.POST("/import", importHandler)
+
+		// User profile
+		api.POST("/user/profile", user.UpdateProfile)
 	}
+
+	// Auth routes (no session required)
+	r.POST("/api/auth/register", user.Register)
+	r.POST("/api/auth/login", user.Login)
+	r.POST("/api/auth/logout", user.Logout)
+	r.GET("/api/auth/verify-email", user.VerifyEmail)
+	r.POST("/api/auth/resend-verification", user.ResendVerification)
+	r.POST("/api/auth/forgot-password", user.ForgotPassword)
+	r.POST("/api/auth/reset-password", user.ResetPassword)
+	r.GET("/api/auth/me", user.GetMe)
 
 	addr := ":" + cfg.Server.Port
 	log.Printf("Pathfinder API listening on %s", addr)
@@ -109,14 +137,14 @@ func main() {
 }
 
 type exportData struct {
-	Goals      []storage.Goal      `json:"goals"`
-	Plans      []storage.DailyPlan `json:"plans"`
-	Events     []storage.Event     `json:"events"`
-	CheckIns   []storage.CheckIn   `json:"check_ins"`
+	Goals    []storage.Goal      `json:"goals"`
+	Plans    []storage.DailyPlan `json:"plans"`
+	Events   []storage.Event     `json:"events"`
+	CheckIns []storage.CheckIn   `json:"check_ins"`
 }
 
 func exportHandler(c *gin.Context) {
-	const uid = "local"
+	uid := c.GetString("user_id")
 	var data exportData
 
 	storage.DB.Where("user_id = ?", uid).Preload("Attachments").Find(&data.Goals)
@@ -129,6 +157,7 @@ func exportHandler(c *gin.Context) {
 }
 
 func importHandler(c *gin.Context) {
+	uid := c.GetString("user_id")
 	var data exportData
 	body, err := c.GetRawData()
 	if err != nil {
@@ -141,22 +170,22 @@ func importHandler(c *gin.Context) {
 	}
 
 	for i := range data.Goals {
-		data.Goals[i].UserID = "local"
+		data.Goals[i].UserID = uid
 		storage.DB.Save(&data.Goals[i])
 	}
 	for i := range data.Plans {
-		data.Plans[i].UserID = "local"
+		data.Plans[i].UserID = uid
 		storage.DB.Save(&data.Plans[i])
 		for j := range data.Plans[i].Tasks {
 			storage.DB.Save(&data.Plans[i].Tasks[j])
 		}
 	}
 	for i := range data.Events {
-		data.Events[i].UserID = "local"
+		data.Events[i].UserID = uid
 		storage.DB.Save(&data.Events[i])
 	}
 	for i := range data.CheckIns {
-		data.CheckIns[i].UserID = "local"
+		data.CheckIns[i].UserID = uid
 		storage.DB.Save(&data.CheckIns[i])
 	}
 
