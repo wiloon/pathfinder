@@ -51,9 +51,10 @@ tasks:
       - pnpm test:e2e
 
   ci:api:
-    desc: "Manually trigger Tekton build for pathfinder-api. Usage: task ci:api [REV=main]"
+    desc: "Manually trigger Tekton build for pathfinder-api. Usage: task ci:api [REV=<branch>]"
     vars:
-      REV: '{{.REV | default "main"}}'
+      REV:
+        sh: '[ -n "{{.REV}}" ] && echo "{{.REV}}" || git rev-parse --abbrev-ref HEAD'
     cmds:
       - |
         kubectl create -f - <<EOF
@@ -89,6 +90,9 @@ tasks:
           - name: ssh-directory
             secret:
               secretName: git-ssh-key
+          - name: docker-credentials
+            secret:
+              secretName: nexus-docker-cred
           podTemplate:
             nodeSelector:
               kubernetes.io/hostname: k8s-71
@@ -96,9 +100,10 @@ tasks:
         EOF
 
   ci:ui:
-    desc: "Manually trigger Tekton build for pathfinder-ui. Usage: task ci:ui [REV=main]"
+    desc: "Manually trigger Tekton build for pathfinder-ui. Usage: task ci:ui [REV=<branch>]"
     vars:
-      REV: '{{.REV | default "main"}}'
+      REV:
+        sh: '[ -n "{{.REV}}" ] && echo "{{.REV}}" || git rev-parse --abbrev-ref HEAD'
     cmds:
       - |
         kubectl create -f - <<EOF
@@ -134,6 +139,9 @@ tasks:
           - name: ssh-directory
             secret:
               secretName: git-ssh-key
+          - name: docker-credentials
+            secret:
+              secretName: nexus-docker-cred
           podTemplate:
             nodeSelector:
               kubernetes.io/hostname: k8s-71
@@ -141,7 +149,7 @@ tasks:
         EOF
 
   ci:
-    desc: "Manually trigger both API and UI Tekton builds. Usage: task ci [REV=main]"
+    desc: "Manually trigger both API and UI Tekton builds. Usage: task ci [REV=<branch>]"
     cmds:
       - task: ci:api
         vars:
