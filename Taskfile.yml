@@ -49,3 +49,103 @@ tasks:
     cmds:
       - pnpm exec playwright install
       - pnpm test:e2e
+
+  ci:api:
+    desc: "Manually trigger Tekton build for pathfinder-api. Usage: task ci:api [REV=main]"
+    vars:
+      REV: '{{.REV | default "main"}}'
+    cmds:
+      - |
+        kubectl create -f - <<EOF
+        apiVersion: tekton.dev/v1beta1
+        kind: PipelineRun
+        metadata:
+          generateName: build-pathfinder-api-manual-
+          namespace: tekton-pipelines
+        spec:
+          pipelineRef:
+            name: build-pathfinder-api
+          serviceAccountName: tekton-bot
+          params:
+          - name: git-revision
+            value: "{{.REV}}"
+          workspaces:
+          - name: source-code
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: longhorn
+                resources:
+                  requests:
+                    storage: 500Mi
+          - name: gitops-code
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: longhorn
+                resources:
+                  requests:
+                    storage: 200Mi
+          - name: ssh-directory
+            secret:
+              secretName: git-ssh-key
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/hostname: k8s-71
+          timeout: 1h
+        EOF
+
+  ci:ui:
+    desc: "Manually trigger Tekton build for pathfinder-ui. Usage: task ci:ui [REV=main]"
+    vars:
+      REV: '{{.REV | default "main"}}'
+    cmds:
+      - |
+        kubectl create -f - <<EOF
+        apiVersion: tekton.dev/v1beta1
+        kind: PipelineRun
+        metadata:
+          generateName: build-pathfinder-ui-manual-
+          namespace: tekton-pipelines
+        spec:
+          pipelineRef:
+            name: build-pathfinder-ui
+          serviceAccountName: tekton-bot
+          params:
+          - name: git-revision
+            value: "{{.REV}}"
+          workspaces:
+          - name: source-code
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: longhorn
+                resources:
+                  requests:
+                    storage: 1Gi
+          - name: gitops-code
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: longhorn
+                resources:
+                  requests:
+                    storage: 200Mi
+          - name: ssh-directory
+            secret:
+              secretName: git-ssh-key
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/hostname: k8s-71
+          timeout: 2h
+        EOF
+
+  ci:
+    desc: "Manually trigger both API and UI Tekton builds. Usage: task ci [REV=main]"
+    cmds:
+      - task: ci:api
+        vars:
+          REV: '{{.REV}}'
+      - task: ci:ui
+        vars:
+          REV: '{{.REV}}'
