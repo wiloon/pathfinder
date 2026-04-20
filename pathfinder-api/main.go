@@ -27,6 +27,7 @@ type Config struct {
 	AI       AIConfig       `toml:"ai"`
 	Resend   ResendConfig   `toml:"resend"`
 	App      AppConfig      `toml:"app"`
+	OpenClaw OpenClawConfig `toml:"openclaw"`
 }
 
 type ServerConfig struct {
@@ -51,6 +52,15 @@ type ResendConfig struct {
 
 type AppConfig struct {
 	FrontendBaseURL string `toml:"frontend_base_url"`
+	AIProvider      string `toml:"ai_provider"`
+}
+
+type OpenClawConfig struct {
+	WebhookURL    string `toml:"webhook_url"`
+	WebhookSecret string `toml:"webhook_secret"`
+	SyncURL       string `toml:"sync_url"`
+	ServiceToken  string `toml:"service_token"`
+	ServiceUserID string `toml:"service_user_id"`
 }
 
 func loadConfig(path string) Config {
@@ -73,10 +83,17 @@ func main() {
 	user.InitSession(middleware.Store)
 	email.Init(cfg.Resend.APIKey, cfg.Resend.From, cfg.App.FrontendBaseURL)
 	aiPkg.Init(aiPkg.Config{
-		APIKey:  cfg.AI.APIKey,
-		Model:   cfg.AI.Model,
-		BaseURL: cfg.AI.BaseURL,
+		Provider: cfg.App.AIProvider,
+		APIKey:   cfg.AI.APIKey,
+		Model:    cfg.AI.Model,
+		BaseURL:  cfg.AI.BaseURL,
+
+		OpenClawSyncURL:       cfg.OpenClaw.SyncURL,
+		OpenClawWebhookURL:    cfg.OpenClaw.WebhookURL,
+		OpenClawWebhookSecret: cfg.OpenClaw.WebhookSecret,
+		OpenClawServiceToken:  cfg.OpenClaw.ServiceToken,
 	})
+	middleware.InitServiceToken(cfg.OpenClaw.ServiceToken, cfg.OpenClaw.ServiceUserID)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -100,16 +117,22 @@ func main() {
 		api.GET("/goals", goal.ListGoals)
 		api.PUT("/goals/:id", goal.UpdateGoal)
 		api.DELETE("/goals/:id", goal.DeleteGoal)
-		api.PUT("/goals/:id/primary", goal.SetPrimaryGoal)
+		api.POST("/goals/parse", goal.ParseGoal)
 
 		// Plan
 		api.GET("/plan/today", plan.GetTodayPlan)
 		api.POST("/plan/generate", plan.GeneratePlan)
 		api.PUT("/tasks/:id", plan.UpdateTask)
+		api.DELETE("/tasks/:id", plan.DeleteTask)
+		api.POST("/plan/tasks/quick", plan.CreateTaskQuick)
+
+		// Agenda
+		api.GET("/agenda/week", plan.GetWeekAgenda)
 
 		// Events
 		api.GET("/events", event.ListEvents)
 		api.POST("/events", event.CreateEvent)
+		api.POST("/events/quick", event.CreateEventQuick)
 		api.DELETE("/events/:id", event.DeleteEvent)
 		api.POST("/events/:id/retro", event.SubmitRetro)
 
@@ -123,6 +146,14 @@ func main() {
 
 		// User profile
 		api.POST("/user/profile", user.UpdateProfile)
+	}
+
+	// Agent routes — service token auth only (machine-to-machine, no browser session)
+	agent := r.Group("/api/agent", middleware.ServiceTokenAuth())
+	{
+		agent.POST("/tasks", plan.CreateTask)
+		agent.PATCH("/tasks/:id", plan.PatchTask)
+		agent.PATCH("/goals/:id", goal.PatchGoal)
 	}
 
 	// Auth routes (no session required)

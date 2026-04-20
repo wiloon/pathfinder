@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"pathfinder-api/ai"
 	"pathfinder-api/checkin"
 	"pathfinder-api/storage"
 )
@@ -18,6 +19,7 @@ import (
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	storage.Init(":memory:")
+	ai.Init(ai.Config{}) // use MiniMax stub (no API key → returns defaultTasks)
 	os.Exit(m.Run())
 }
 

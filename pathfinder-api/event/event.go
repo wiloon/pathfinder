@@ -109,6 +109,48 @@ func CreateEvent(c *gin.Context) {
 	c.JSON(http.StatusCreated, ev)
 }
 
+// CreateEventQuick handles POST /api/events/quick
+// Accepts JSON: title (required), description, event_date (YYYY-MM-DD, required).
+// Used by the AI goal-parse flow to create extracted events programmatically.
+func CreateEventQuick(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var body struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		EventDate   string `json:"event_date"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+	if body.EventDate == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "event_date is required"})
+		return
+	}
+	if _, err := time.Parse("2006-01-02", body.EventDate); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "event_date must be YYYY-MM-DD"})
+		return
+	}
+
+	ev := storage.Event{
+		UserID:      userID,
+		Title:       body.Title,
+		Description: body.Description,
+		EventDate:   body.EventDate,
+		Status:      "upcoming",
+	}
+	if err := storage.DB.Create(&ev).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, ev)
+}
+
 // DeleteEvent handles DELETE /api/events/:id
 func DeleteEvent(c *gin.Context) {
 	userID := c.GetString("user_id")

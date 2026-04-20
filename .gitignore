@@ -29,6 +29,7 @@ go.work.sum
 
 # Go build artifacts
 pathfinder-api/pathfinder-api
+pathfinder-api/config.toml
 pathfinder-api/*.db
 pathfinder-api/*.db-shm
 pathfinder-api/*.db-wal

@@ -2,7 +2,8 @@ package goal
 
 import (
 	"encoding/base64"
-	"io"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,91 +14,94 @@ import (
 	"pathfinder-api/storage"
 )
 
+// encodeTags marshals a string slice to a compact JSON array string.
+// Returns "[]" for nil or empty input.
+func encodeTags(tags []string) string {
+	if len(tags) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
 // CreateGoal handles POST /api/goals
+// Accepts JSON: title (required), description, weight (1–10, default 5),
+// tags ([]string), status, timeline.
 func CreateGoal(c *gin.Context) {
 	userID := c.GetString("user_id")
-	title := c.PostForm("title")
-	description := c.PostForm("description")
-	goalType := c.PostForm("type")
-	status := c.PostForm("status")
-	timeline := c.PostForm("timeline")
 
-	if title == "" {
+	var body struct {
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Weight      *int     `json:"weight"`
+		Tags        []string `json:"tags"`
+		Status      string   `json:"status"`
+		Timeline    string   `json:"timeline"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if body.Title == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
-	if goalType == "" {
-		goalType = "secondary"
+
+	weight := 5
+	if body.Weight != nil {
+		weight = *body.Weight
 	}
+	if weight < 1 || weight > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "weight must be between 1 and 10"})
+		return
+	}
+
+	status := body.Status
 	if status == "" {
 		status = "active"
 	}
 
 	g := storage.Goal{
 		UserID:      userID,
-		Title:       title,
-		Description: description,
-		Type:        goalType,
+		Title:       body.Title,
+		Description: body.Description,
+		Weight:      weight,
+		Tags:        encodeTags(body.Tags),
 		Status:      status,
-		Timeline:    timeline,
+		Timeline:    body.Timeline,
 	}
 
 	if err := storage.DB.Create(&g).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Errorf("createGoal: %w", err).Error()})
 		return
 	}
 
-	// Handle file attachments.
-	form, _ := c.MultipartForm()
-	var attachments []storage.GoalAttachment
-	if form != nil {
-		for _, fh := range form.File["attachments"] {
-			f, err := fh.Open()
-			if err != nil {
-				continue
-			}
-			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				continue
-			}
-			mimeType := fh.Header.Get("Content-Type")
-			if mimeType == "" {
-				mimeType = "application/octet-stream"
-			}
-			att := storage.GoalAttachment{
-				GoalID:   g.ID,
-				Filename: fh.Filename,
-				MimeType: mimeType,
-				Data:     data,
-			}
-			storage.DB.Create(&att)
-			att.DataBase64 = base64.StdEncoding.EncodeToString(data)
-			attachments = append(attachments, att)
+	// If no plan exists today, generate one from all active goals.
+	today := time.Now().Format("2006-01-02")
+	if err := storage.DB.Where("user_id = ? AND date = ?", userID, today).First(&storage.DailyPlan{}).Error; err != nil {
+		var goals []storage.Goal
+		storage.DB.Where("user_id = ? AND status = ?", userID, "active").Find(&goals)
+
+		var profile storage.UserProfile
+		hours := 8.0
+		if storage.DB.Where("user_id = ?", userID).First(&profile).Error == nil && profile.DailyAvailableHours > 0 {
+			hours = profile.DailyAvailableHours
+		}
+
+		tasks, _ := ai.GenerateInitialPlan(goals, nil, hours, "09:00")
+
+		plan := storage.DailyPlan{UserID: userID, Date: today}
+		storage.DB.Create(&plan)
+		for i := range tasks {
+			tasks[i].PlanID = plan.ID
+			storage.DB.Create(&tasks[i])
 		}
 	}
 
-	// If this is the first primary goal, generate an initial plan.
-	if goalType == "primary" {
-		today := time.Now().Format("2006-01-02")
-		var existing storage.DailyPlan
-		err := storage.DB.Where("user_id = ? AND date = ?", userID, today).First(&existing).Error
-		if err != nil {
-			// No plan today — generate one.
-			var goals []storage.Goal
-			storage.DB.Where("user_id = ? AND status = ?", userID, "active").Find(&goals)
-			tasks, _ := ai.GenerateInitialPlan(goals, attachments, 8, "09:00")
-
-			plan := storage.DailyPlan{UserID: userID, Date: today}
-			storage.DB.Create(&plan)
-			for i := range tasks {
-				tasks[i].PlanID = plan.ID
-				storage.DB.Create(&tasks[i])
-			}
-		}
-	}
-
-	g.Attachments = attachments
 	c.JSON(http.StatusCreated, g)
 }
 
@@ -107,7 +111,6 @@ func ListGoals(c *gin.Context) {
 	var goals []storage.Goal
 	storage.DB.Where("user_id = ?", userID).Preload("Attachments").Find(&goals)
 
-	// Populate base64 data for attachments.
 	for i := range goals {
 		for j := range goals[i].Attachments {
 			goals[i].Attachments[j].DataBase64 = base64.StdEncoding.EncodeToString(goals[i].Attachments[j].Data)
@@ -117,6 +120,7 @@ func ListGoals(c *gin.Context) {
 }
 
 // UpdateGoal handles PUT /api/goals/:id
+// Accepts JSON; all fields optional (patch semantics).
 func UpdateGoal(c *gin.Context) {
 	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
@@ -132,11 +136,12 @@ func UpdateGoal(c *gin.Context) {
 	}
 
 	var body struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-		Type        *string `json:"type"`
-		Status      *string `json:"status"`
-		Timeline    *string `json:"timeline"`
+		Title       *string  `json:"title"`
+		Description *string  `json:"description"`
+		Weight      *int     `json:"weight"`
+		Tags        []string `json:"tags"`
+		Status      *string  `json:"status"`
+		Timeline    *string  `json:"timeline"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -149,8 +154,15 @@ func UpdateGoal(c *gin.Context) {
 	if body.Description != nil {
 		g.Description = *body.Description
 	}
-	if body.Type != nil {
-		g.Type = *body.Type
+	if body.Weight != nil {
+		if *body.Weight < 1 || *body.Weight > 10 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "weight must be between 1 and 10"})
+			return
+		}
+		g.Weight = *body.Weight
+	}
+	if body.Tags != nil {
+		g.Tags = encodeTags(body.Tags)
 	}
 	if body.Status != nil {
 		g.Status = *body.Status
@@ -159,11 +171,80 @@ func UpdateGoal(c *gin.Context) {
 		g.Timeline = *body.Timeline
 	}
 
-	storage.DB.Save(&g)
+	if err := storage.DB.Save(&g).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Errorf("updateGoal: %w", err).Error()})
+		return
+	}
 	c.JSON(http.StatusOK, g)
 }
 
-// DeleteGoal handles DELETE /api/goals/:id
+// PatchGoal handles PATCH /api/agent/goals/:id
+// Service-token-auth only. Currently supports weight adjustment (1–10).
+func PatchGoal(c *gin.Context) {
+	userID := c.GetString("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	var g storage.Goal
+	if err := storage.DB.Where("id = ? AND user_id = ?", id, userID).First(&g).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "goal not found"})
+		return
+	}
+
+	var body struct {
+		Weight *int `json:"weight"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.Weight == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "weight is required"})
+		return
+	}
+	if *body.Weight < 1 || *body.Weight > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "weight must be between 1 and 10"})
+		return
+	}
+
+	g.Weight = *body.Weight
+	if err := storage.DB.Save(&g).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Errorf("patchGoal: %w", err).Error()})
+		return
+	}
+	c.JSON(http.StatusOK, g)
+}
+// ParseGoal handles POST /api/goals/parse
+// Accepts JSON: raw_input (required, max 500 chars).
+// Calls AI to parse free-form goal text; does NOT save to DB.
+func ParseGoal(c *gin.Context) {
+	var body struct {
+		RawInput string `json:"raw_input"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.RawInput == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "raw_input is required"})
+		return
+	}
+	if len(body.RawInput) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "raw_input must be 500 characters or fewer"})
+		return
+	}
+
+	parsed, err := ai.ParseGoalText(body.RawInput)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Errorf("parseGoal: %w", err).Error()})
+		return
+	}
+	c.JSON(http.StatusOK, parsed)
+}
+
 func DeleteGoal(c *gin.Context) {
 	userID := c.GetString("user_id")
 	id, err := strconv.Atoi(c.Param("id"))
@@ -181,27 +262,4 @@ func DeleteGoal(c *gin.Context) {
 	storage.DB.Where("goal_id = ?", g.ID).Delete(&storage.GoalAttachment{})
 	storage.DB.Delete(&g)
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
-}
-
-// SetPrimaryGoal handles PUT /api/goals/:id/primary
-func SetPrimaryGoal(c *gin.Context) {
-	userID := c.GetString("user_id")
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-
-	// Set all goals to secondary first.
-	storage.DB.Model(&storage.Goal{}).Where("user_id = ?", userID).Update("type", "secondary")
-
-	// Set the target goal to primary.
-	var g storage.Goal
-	if err := storage.DB.Where("id = ? AND user_id = ?", id, userID).First(&g).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "goal not found"})
-		return
-	}
-	g.Type = "primary"
-	storage.DB.Save(&g)
-	c.JSON(http.StatusOK, g)
 }

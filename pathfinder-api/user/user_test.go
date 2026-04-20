@@ -311,3 +311,72 @@ func TestVerifyEmail_MissingTokenReturns400(t *testing.T) {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
+
+// --- UpdateProfile: daily_available_hours ---
+
+func newProfileRouter() *gin.Engine {
+	r := gin.New()
+	r.POST("/api/user/profile", func(c *gin.Context) {
+		c.Set("user_id", "profile-test-user")
+		UpdateProfile(c)
+	})
+	return r
+}
+
+func postProfile(r *gin.Engine, fields map[string]string) *httptest.ResponseRecorder {
+	parts := make([]string, 0, len(fields))
+	for k, v := range fields {
+		parts = append(parts, k+"="+v)
+	}
+	body := strings.Join(parts, "&")
+	req := httptest.NewRequest(http.MethodPost, "/api/user/profile", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestUpdateProfile_ValidHours(t *testing.T) {
+	r := newProfileRouter()
+	w := postProfile(r, map[string]string{"daily_available_hours": "6.5"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var profile storage.UserProfile
+	storage.DB.Where("user_id = ?", "profile-test-user").First(&profile)
+	if profile.DailyAvailableHours != 6.5 {
+		t.Errorf("daily_available_hours = %v, want 6.5", profile.DailyAvailableHours)
+	}
+}
+
+func TestUpdateProfile_InvalidHoursTooLow(t *testing.T) {
+	r := newProfileRouter()
+	w := postProfile(r, map[string]string{"daily_available_hours": "0.1"})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateProfile_InvalidHoursTooHigh(t *testing.T) {
+	r := newProfileRouter()
+	w := postProfile(r, map[string]string{"daily_available_hours": "25"})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateProfile_InvalidHoursNonNumeric(t *testing.T) {
+	r := newProfileRouter()
+	w := postProfile(r, map[string]string{"daily_available_hours": "abc"})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateProfile_NoHoursFieldSucceeds(t *testing.T) {
+	r := newProfileRouter()
+	w := postProfile(r, map[string]string{"bio": "hello"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}

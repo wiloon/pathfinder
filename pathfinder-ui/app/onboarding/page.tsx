@@ -13,15 +13,15 @@ import { Badge } from '@/components/ui/badge';
 import { createGoal, updateUserProfile } from '@/lib/api';
 import { toast } from 'sonner';
 
-const GOAL_TYPES = ['career', 'health', 'education', 'personal', 'other'];
+const GOAL_TAGS = ['career', 'health', 'education', 'personal', 'other'];
 
 const primaryGoalSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
   description: z.string().optional(),
-  type: z.string().min(1, 'Select a goal type'),
-  dailyHours: z.number().min(1).max(12),
+  tag: z.string().min(1, 'Select a goal category'),
+  dailyHours: z.number().min(0.5).max(24),
   preferredStartTime: z.string().optional(),
-  image: z.any().optional(),
+  timeline: z.string().optional(),
 });
 
 type PrimaryGoalForm = z.infer<typeof primaryGoalSchema>;
@@ -29,44 +29,38 @@ type PrimaryGoalForm = z.infer<typeof primaryGoalSchema>;
 interface SecondaryGoal {
   title: string;
   description: string;
-  type: string;
+  tag: string;
 }
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [selectedType, setSelectedType] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [selectedTag, setSelectedTag] = useState('');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [bio, setBio] = useState('');
   const [secondaryGoals, setSecondaryGoals] = useState<SecondaryGoal[]>([]);
-  const [newSecondaryGoal, setNewSecondaryGoal] = useState<SecondaryGoal>({ title: '', description: '', type: 'personal' });
+  const [newSecondaryGoal, setNewSecondaryGoal] = useState<SecondaryGoal>({ title: '', description: '', tag: 'personal' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, formState: { errors }, setValue } = useForm<PrimaryGoalForm>({
     resolver: zodResolver(primaryGoalSchema),
-    defaultValues: { dailyHours: 8, type: '', preferredStartTime: '08:00' },
+    defaultValues: { dailyHours: 8, tag: '', preferredStartTime: '08:00' },
   });
 
   const totalSteps = 6;
 
-  const handleTypeSelect = (type: string) => {
-    setSelectedType(type);
-    setValue('type', type);
+  const handleTagSelect = (tag: string) => {
+    setSelectedTag(tag);
+    setValue('tag', tag);
   };
 
-  const handleNextStep = () => {
-    if (step < totalSteps) setStep(step + 1);
-  };
-
-  const handlePrevStep = () => {
-    if (step > 1) setStep(step - 1);
-  };
+  const handleNextStep = () => { if (step < totalSteps) setStep(step + 1); };
+  const handlePrevStep = () => { if (step > 1) setStep(step - 1); };
 
   const addSecondaryGoal = () => {
     if (newSecondaryGoal.title.trim()) {
       setSecondaryGoals([...secondaryGoals, { ...newSecondaryGoal }]);
-      setNewSecondaryGoal({ title: '', description: '', type: 'personal' });
+      setNewSecondaryGoal({ title: '', description: '', tag: 'personal' });
     }
   };
 
@@ -77,34 +71,29 @@ export default function OnboardingPage() {
   const onSubmit = async (data: PrimaryGoalForm) => {
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('title', data.title);
-      if (data.description) formData.append('description', data.description);
-      formData.append('goal_type', data.type);
-      formData.append('is_primary', 'true');
-      formData.append('timeline', '1 week');
-      formData.append('daily_hours', String(data.dailyHours));
-      if (data.preferredStartTime) formData.append('preferred_start_time', data.preferredStartTime);
-      if (imageFile) formData.append('background_image', imageFile);
-
-      await createGoal(formData);
+      await createGoal({
+        title: data.title,
+        description: data.description || '',
+        weight: 8,
+        tags: [data.tag],
+        timeline: data.timeline || '',
+      });
 
       for (const sg of secondaryGoals) {
         await createGoal({
           title: sg.title,
           description: sg.description,
-          goal_type: sg.type,
-          is_primary: false,
+          weight: 5,
+          tags: [sg.tag],
         });
       }
 
-      // Save user profile (bio + resume)
-      if (bio || resumeFile) {
-        const profileData = new FormData();
-        if (bio) profileData.append('bio', bio);
-        if (resumeFile) profileData.append('resume', resumeFile);
-        await updateUserProfile(profileData).catch(() => {/* non-fatal */});
-      }
+      // Save user profile (bio, resume, daily hours).
+      const profileData = new FormData();
+      if (bio) profileData.append('bio', bio);
+      if (resumeFile) profileData.append('resume', resumeFile);
+      profileData.append('daily_available_hours', String(data.dailyHours));
+      await updateUserProfile(profileData).catch(() => {/* non-fatal */});
 
       toast.success('Goals created! Welcome to Pathfinder!');
       router.push('/today');
@@ -132,7 +121,7 @@ export default function OnboardingPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        {/* Step 1: Goal Type */}
+        {/* Step 1: Goal Category */}
         {step === 1 && (
           <Card>
             <CardHeader>
@@ -141,24 +130,24 @@ export default function OnboardingPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {GOAL_TYPES.map((type) => (
+                {GOAL_TAGS.map((tag) => (
                   <button
-                    key={type}
+                    key={tag}
                     type="button"
-                    onClick={() => handleTypeSelect(type)}
+                    onClick={() => handleTagSelect(tag)}
                     className={`p-4 rounded-lg border-2 text-left capitalize font-medium transition-all ${
-                      selectedType === type
+                      selectedTag === tag
                         ? 'border-primary bg-primary/10 text-primary'
                         : 'border-border hover:border-primary/50'
                     }`}
                   >
-                    {type}
+                    {tag}
                   </button>
                 ))}
               </div>
-              {errors.type && <p className="text-destructive text-sm mt-2">{errors.type.message}</p>}
+              {errors.tag && <p className="text-destructive text-sm mt-2">{errors.tag.message}</p>}
               <div className="flex justify-end mt-6">
-                <Button type="button" onClick={handleNextStep} disabled={!selectedType}>
+                <Button type="button" onClick={handleNextStep} disabled={!selectedTag}>
                   Next
                 </Button>
               </div>
@@ -166,7 +155,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
-        {/* Step 2: Title + Description + Image */}
+        {/* Step 2: Title + Description */}
         {step === 2 && (
           <Card>
             <CardHeader>
@@ -184,14 +173,8 @@ export default function OnboardingPage() {
                 <Textarea id="description" {...register('description')} placeholder="Describe what achieving this goal looks like..." className="mt-1" rows={4} />
               </div>
               <div>
-                <Label htmlFor="image">Background Image (optional)</Label>
-                <Input
-                  id="image"
-                  type="file"
-                  accept="image/*"
-                  className="mt-1"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                />
+                <Label htmlFor="timeline">Timeline (optional)</Label>
+                <Input id="timeline" {...register('timeline')} placeholder="e.g. 3 months (leave empty for long-term)" className="mt-1" />
               </div>
               <div className="flex justify-between mt-6">
                 <Button type="button" variant="outline" onClick={handlePrevStep}>Back</Button>
@@ -201,7 +184,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
-        {/* Step 3: Timeline (auto 1 week) */}
+        {/* Step 3: Timeline context */}
         {step === 3 && (
           <Card>
             <CardHeader>
@@ -220,7 +203,7 @@ export default function OnboardingPage() {
           </Card>
         )}
 
-        {/* Step 4: Daily Hours + Preferred Start Time */}
+        {/* Step 4: Daily Hours */}
         {step === 4 && (
           <Card>
             <CardHeader>
@@ -229,12 +212,13 @@ export default function OnboardingPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="dailyHours">Daily Available Hours (1–12)</Label>
+                <Label htmlFor="dailyHours">Daily Available Hours (0.5–24)</Label>
                 <Input
                   id="dailyHours"
                   type="number"
-                  min={1}
-                  max={12}
+                  min={0.5}
+                  max={24}
+                  step={0.5}
                   {...register('dailyHours', { valueAsNumber: true })}
                   className="mt-1 w-32"
                 />
@@ -270,7 +254,7 @@ export default function OnboardingPage() {
                   <div className="flex-1">
                     <p className="font-medium">{sg.title}</p>
                     {sg.description && <p className="text-sm text-muted-foreground">{sg.description}</p>}
-                    <Badge variant="outline" className="mt-1 capitalize">{sg.type}</Badge>
+                    <Badge variant="outline" className="mt-1 capitalize">{sg.tag}</Badge>
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeSecondaryGoal(i)}>Remove</Button>
                 </div>
@@ -290,10 +274,10 @@ export default function OnboardingPage() {
                 />
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  value={newSecondaryGoal.type}
-                  onChange={(e) => setNewSecondaryGoal({ ...newSecondaryGoal, type: e.target.value })}
+                  value={newSecondaryGoal.tag}
+                  onChange={(e) => setNewSecondaryGoal({ ...newSecondaryGoal, tag: e.target.value })}
                 >
-                  {GOAL_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+                  {GOAL_TAGS.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
                 </select>
                 <Button type="button" variant="outline" onClick={addSecondaryGoal} disabled={!newSecondaryGoal.title.trim()}>
                   Add Secondary Goal

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -332,17 +333,27 @@ func UpdateProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	bio := c.PostForm("bio")
+	dailyHoursStr := c.PostForm("daily_available_hours")
 
 	var profile storage.UserProfile
 	result := storage.DB.Where("user_id = ?", userID).First(&profile)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			profile = storage.UserProfile{UserID: userID}
+			profile = storage.UserProfile{UserID: userID, DailyAvailableHours: 8.0}
 		}
 	}
 
 	if bio != "" {
 		profile.Bio = bio
+	}
+
+	if dailyHoursStr != "" {
+		hours, err := strconv.ParseFloat(dailyHoursStr, 64)
+		if err != nil || hours < 0.5 || hours > 24.0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "daily_available_hours must be between 0.5 and 24.0"})
+			return
+		}
+		profile.DailyAvailableHours = hours
 	}
 
 	fh, err := c.FormFile("resume")

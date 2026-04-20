@@ -17,14 +17,15 @@ type User struct {
 }
 
 type UserProfile struct {
-	ID             uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	UserID         string    `json:"user_id" gorm:"uniqueIndex"`
-	Bio            string    `json:"bio"`
-	ResumeFilename string    `json:"resume_filename"`
-	ResumeMimeType string    `json:"resume_mime_type"`
-	ResumeData     []byte    `json:"-"`
+	ID                   uint      `gorm:"primarykey" json:"id"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+	UserID               string    `json:"user_id" gorm:"uniqueIndex"`
+	Bio                  string    `json:"bio"`
+	ResumeFilename       string    `json:"resume_filename"`
+	ResumeMimeType       string    `json:"resume_mime_type"`
+	ResumeData           []byte    `json:"-"`
+	DailyAvailableHours  float64   `json:"daily_available_hours" gorm:"default:8.0"`
 }
 
 type Goal struct {
@@ -34,9 +35,10 @@ type Goal struct {
 	UserID      string           `json:"user_id"`
 	Title       string           `json:"title"`
 	Description string           `json:"description"`
-	Type        string           `json:"type"`   // primary | secondary
+	Weight      int              `json:"weight" gorm:"default:5"` // relative priority 1–10
+	Tags        string           `json:"tags" gorm:"default:'[]'"`  // JSON array e.g. ["career","health"]
 	Status      string           `json:"status"` // active | paused | completed
-	Timeline    string           `json:"timeline"`
+	Timeline    string           `json:"timeline"` // optional; empty = long-term
 	Attachments []GoalAttachment `gorm:"foreignKey:GoalID" json:"attachments,omitempty"`
 }
 
@@ -104,4 +106,16 @@ type CheckIn struct {
 	Completed     string    `json:"completed"`
 	Blocked       string    `json:"blocked"`
 	TomorrowFocus string    `json:"tomorrow_focus"`
+}
+
+// PlanBrief stores a free-text planning brief submitted by the user.
+// start_date and end_date capture the planning window the brief targeted.
+// Brief history gives OpenClaw context across sessions.
+type PlanBrief struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UserID    string    `json:"user_id"`
+	Text      string    `json:"text"`
+	StartDate string    `json:"start_date"` // YYYY-MM-DD
+	EndDate   string    `json:"end_date"`   // YYYY-MM-DD
 }

@@ -10,9 +10,17 @@ api_key = "your-minimax-api-key-here"
 model = "MiniMax-Text-01"
 base_url = "https://api.minimaxi.chat/v1"
 
+[openclaw]
+webhook_url = ""
+webhook_secret = ""
+sync_url = "http://192.168.50.72:18789/v1/chat/completions"
+service_token = "7bfd7cc7fb9a72e83f848a8be95414e0c79e9c3612b9846d"
+service_user_id = ""
+
 [resend]
 api_key = ""
 from = "Pathfinder <noreply@yourdomain.com>"
 
 [app]
 frontend_base_url = "http://localhost:3000"
+ai_provider = "openclaw"

@@ -51,12 +51,13 @@ User action (goal created, check-in submitted)
         │
         ▼
 Pathfinder API
-        │  POST webhook (async, fire-and-forget)
+        │  POST webhook (waits for HTTP 2xx delivery ack)
+        ├─ non-2xx or timeout ──► user operation fails (return error to user)
         ▼
-    OpenClaw
-        │  AI background processing
+    OpenClaw returns 2xx immediately
+        │  AI background processing (async)
         ▼
-    (no callback required for notifications)
+    (no callback to Pathfinder)
 ```
 
 ### Pattern 3: OpenClaw → Pathfinder (Service Token)
@@ -101,7 +102,8 @@ ai_provider = "openclaw"
 # sync_url: used for brief planning (synchronous call, Pathfinder waits for response).
 sync_url = "https://openclaw.example.com/api/plan/brief"
 
-# webhook_url: used for event notifications (fire-and-forget).
+# webhook_url: used for event notifications.
+# Pathfinder waits for HTTP 2xx from OpenClaw; failure fails the user's operation.
 # Leave empty to skip event notifications.
 webhook_url    = "https://openclaw.example.com/webhooks/pathfinder"
 
@@ -304,12 +306,17 @@ OpenClaw must reject requests where the signature does not match.
 }
 ```
 
-### Pathfinder webhook response
+### Pathfinder webhook response expectations
 
-Pathfinder treats the webhook as **fire-and-forget**. It expects only:
+Pathfinder sends the webhook and waits for a response **before returning success to the user**.
 
-- `2xx` → acknowledged
-- Any non-2xx → log the error, do not retry (for now)
+| Response | Pathfinder behaviour |
+|---|---|
+| `2xx` | User operation succeeds; OpenClaw processes AI logic async |
+| Non-2xx | User operation fails; Pathfinder returns 502 to the user |
+| Timeout (10 s) | User operation fails; Pathfinder returns 504 to the user |
+
+OpenClaw must return `2xx` quickly (before doing any AI processing). All AI work happens in the background after acknowledging receipt.
 
 ---
 
@@ -341,6 +348,6 @@ config.toml has openclaw.webhook_url?
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | Should Pathfinder retry failed webhooks, or is fire-and-forget acceptable for MVP? | Open |
+| Q1 | Should Pathfinder retry failed webhooks, or is fire-and-forget acceptable for MVP? | **Resolved: webhook failure fails the user's operation immediately; no retry at MVP** |
 | Q2 | Should OpenClaw receive the full goal list on every sync call, or only active goals? | **Resolved: send all active goals + last 5 briefs** |
 | Q3 | Do we need a `plan.cleared` event so OpenClaw knows when a user manually wipes their plan? | Open |

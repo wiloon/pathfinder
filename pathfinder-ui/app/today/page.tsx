@@ -18,8 +18,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getTodayPlan, updateTask, generatePlan } from '@/lib/api';
+import { getTodayPlan, updateTask, deleteTask, generatePlan } from '@/lib/api';
 import { AddGoalDialog } from '@/components/add-goal-dialog';
+import { WeekAgendaView } from '@/components/week-agenda';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +42,7 @@ interface TodayPlan {
   tasks: Task[];
 }
 
-function SortableTask({ task, onStatusChange }: { task: Task; onStatusChange: (id: number, status: string) => void }) {
+function SortableTask({ task, onStatusChange, onDelete }: { task: Task; onStatusChange: (id: number, status: string) => void; onDelete: (id: number) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -94,6 +95,9 @@ function SortableTask({ task, onStatusChange }: { task: Task; onStatusChange: (i
             ↺
           </Button>
         )}
+        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(task.id)} title="Delete task">
+          ✕
+        </Button>
       </div>
     </div>
   );
@@ -102,6 +106,7 @@ function SortableTask({ task, onStatusChange }: { task: Task; onStatusChange: (i
 export default function TodayPage() {
   const queryClient = useQueryClient();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [view, setView] = useState<'today' | 'week'>('today');
 
   const { data: plan, isLoading, error } = useQuery<TodayPlan>({
     queryKey: ['today-plan'],
@@ -116,6 +121,12 @@ export default function TodayPage() {
     mutationFn: ({ id, data }: { id: number; data: object }) => updateTask(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['today-plan'] }),
     onError: () => toast.error('Failed to update task'),
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (id: number) => deleteTask(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['today-plan'] }),
+    onError: () => toast.error('删除失败'),
   });
 
   const generateMutation = useMutation({
@@ -135,6 +146,11 @@ export default function TodayPage() {
   const handleStatusChange = (id: number, status: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     updateTaskMutation.mutate({ id, data: { status } });
+  };
+
+  const handleDelete = (id: number) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    deleteTaskMutation.mutate(id);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -160,10 +176,10 @@ export default function TodayPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold">Today&apos;s Plan</h1>
-          {plan?.date && <p className="text-muted-foreground text-sm">{new Date(plan.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>}
+          {plan?.date && view === 'today' && <p className="text-muted-foreground text-sm">{new Date(plan.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>}
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
@@ -178,7 +194,29 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {tasks.length === 0 ? (
+      {/* View toggle */}
+      <div className="flex gap-1 mb-5 bg-muted p-1 rounded-lg w-fit">
+        <button
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            view === 'today' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setView('today')}
+        >
+          今天
+        </button>
+        <button
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            view === 'week' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setView('week')}
+        >
+          本周
+        </button>
+      </div>
+
+      {view === 'week' ? (
+        <WeekAgendaView />
+      ) : tasks.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground mb-4">No tasks for today.</p>
@@ -188,20 +226,21 @@ export default function TodayPage() {
           </CardContent>
         </Card>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {tasks.map(task => (
-                <SortableTask key={task.id} task={task} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {tasks.map(task => (
+                  <SortableTask key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <div className="mt-6 text-sm text-muted-foreground text-center">
+            {tasks.filter(t => t.status === 'done').length} / {tasks.length} tasks completed
+          </div>
+        </>
       )}
-
-      <div className="mt-6 text-sm text-muted-foreground text-center">
-        {tasks.filter(t => t.status === 'done').length} / {tasks.length} tasks completed
-      </div>
     </div>
   );
 }
