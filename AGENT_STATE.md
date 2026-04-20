@@ -15,8 +15,8 @@
 ## Current Focus
 
 **Active task:** None — awaiting instruction.  
-**Last completed:** Rewrote AGENT_STATE.md to Harness Engineering standard (2026-04-19).  
-**Recommended next task:** `#3` — Add input validation to user registration and goal creation (highest security impact, self-contained).
+**Last completed:** Recorded brief planning decisions (sync HTTP, DB storage, structured response) + added tasks #15–#17 (2026-04-19).  
+**Recommended next task:** `#9` — Add service token middleware (unblocks #10, #11, #13; enables OpenClaw to call Pathfinder on user's behalf, and agent/curl access without browser session).
 
 **Blockers:** None.
 
@@ -164,6 +164,13 @@ HTTP Handler → business logic function → storage.DB calls
 | Project start | Session cookie auth (not JWT) | Simpler revocation; no token refresh logic needed; HTTPOnly cookie mitigates XSS | JWT (stateless but harder to revoke; overkill for this scale) |
 | Project start | MiniMax API (OpenAI-compatible) | Client requirement; interface is drop-in compatible with OpenAI SDK patterns | OpenAI directly (different provider; same interface) |
 | Project start | Monorepo (api + ui in one repo) | Simplifies local dev and CI; single `Taskfile.yml` orchestrates both | Separate repos (unnecessary coordination cost at this team size) |
+| 2026-04-19 | AI backend is a configurable provider, not hardcoded | Pathfinder is a UI + data layer; the decision-making brain is pluggable. User can choose MiniMax (built-in) or OpenClaw (self-hosted) as the AI backend. Both must implement the same interface in `ai/`. | Hardcode MiniMax only (blocks OpenClaw integration); Make OpenClaw the only option (breaks standalone usage) |
+| 2026-04-19 | OpenClaw interacts with Pathfinder via service token, not session cookie | **Primary use case:** user talks to OpenClaw directly (no Pathfinder UI open); OpenClaw calls Pathfinder's API to create/update goals and tasks on the user's behalf. Session cookies are user-facing browser auth and cannot be used by a server-side caller. Service token is the simplest machine-to-machine credential: a single config value, one middleware check, maps to a fixed `service_user_id`. **Secondary use case:** agent/curl access for manual testing and scripting. | OAuth2 client credentials (over-engineered for single-tenant use); reuse session cookie (not suitable for server-side callers) |
+| 2026-04-19 | Pathfinder → OpenClaw uses two patterns: webhook for notifications, sync HTTP for brief planning | Webhook (fire-and-forget) suits event notifications (goal.created, checkin.submitted) where result is not needed immediately. Sync HTTP suits brief planning where UI must show result to user — spinner is better UX than polling. See `pathfinder-api/docs/openclaw-integration.md`. | Pure async for all calls (requires polling, worse UX for brief flow); pure sync for all calls (blocks on notifications unnecessarily) |
+| 2026-04-19 | Brief text is stored in DB | Brief history gives OpenClaw context across sessions ("last week job hunting, this week interview prep"). Without storage, each call is stateless and OpenClaw cannot detect context drift. | Fire-and-forget, no storage (simpler but loses context history) |
+| 2026-04-19 | Brief → OpenClaw returns structured JSON `{goals, tasks}` parsed by Pathfinder | Pathfinder owns the data model; OpenClaw must not write directly to DB. Sync response is the cleanest contract: one request, one response, Pathfinder stores everything. | OpenClaw calls back via service token (async, needs polling, higher complexity for brief flow) |
+| 2026-04-19 | Brief planning provider is a config choice (openclaw/minimax), not a fallback chain; MiniMax brief deferred | The two providers have different interfaces and capabilities. Brief (free-text → goals+tasks) requires OpenClaw. Implementing a parallel MiniMax brief path now adds complexity with no immediate user value. 501 is the correct response for the unimplemented path — explicit, not silent. | Silent fallback to MiniMax (hides misconfiguration); implement both now (unnecessary scope) |
+| 2026-04-19 | Service token auth uses a separate `ServiceTokenAuth` middleware, not merged into `RequireAuth` | Keeps auth paths explicit: browser routes mount `RequireAuth`, OpenClaw/agent routes mount `ServiceTokenAuth`, routes open to both mount both. Token leakage cannot access routes not explicitly opted in. Easier to audit which routes accept machine auth. | OR condition inside `RequireAuth` (token leakage grants access to all user routes; harder to audit) |
 
 ---
 
@@ -182,6 +189,15 @@ HTTP Handler → business logic function → storage.DB calls
 | 6 | Add test coverage for `plan/` package | P2 | — | ⬜ Pending |
 | 7 | Add test coverage for `event/` package | P2 | — | ⬜ Pending |
 | 8 | Decompose `checkin/checkin.go` `SubmitCheckin` into smaller functions (V7) | P3 | #6 | ⬜ Pending |
+| 9 | Add service token middleware — machine-to-machine auth for OpenClaw/agent access | P1 | — | ⬜ Pending |
+| 10 | Add `POST /api/plan/tasks` — manually create a task in today's plan (no AI) | P2 | #9 | ⬜ Pending |
+| 11 | Add `PATCH /api/tasks/:id` fields: title, time_slot (current PUT only updates status) | P2 | #9 | ⬜ Pending |
+| 12 | Refactor `ai/` package to support pluggable provider (MiniMax or OpenClaw) via config | P2 | — | ⬜ Pending |
+| 13 | Add OpenClaw webhook dispatcher — when `openclaw.webhook_url` is configured, POST goal/plan events to OpenClaw instead of calling MiniMax directly | P2 | #9 | ⬜ Pending |
+| 14 | Add `[openclaw]` config section (`webhook_url`, `webhook_secret`, `sync_url`, `service_token`, `service_user_id`) and `app.ai_provider` field | P2 | — | ⬜ Pending |
+| 15 | Add `PlanBrief` model to storage — fields: id, user_id, text, created_at | P2 | — | ⬜ Pending |
+| 16 | Add `POST /api/plan/brief` — save brief to DB, call OpenClaw sync (`sync_url`), parse `{goals, tasks}` response, create goals + tasks; return 501 if `ai_provider` is not `openclaw` | P2 | #15 | ⬜ Pending |
+| 17 | Add brief input UI on Today page — textarea + submit button, loading spinner while waiting, renders new goals/tasks on response | P2 | #16 | ⬜ Pending |
 
 ---
 
