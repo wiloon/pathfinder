@@ -21,11 +21,11 @@ type ParsedTask struct {
 
 // ParsedGoal is the structured result of AI goal parsing.
 type ParsedGoal struct {
-	Title           string       `json:"title"`
-	Description     string       `json:"description"`
-	Weight          int          `json:"weight"` // 1–10; clamped to range
-	Tags            []string     `json:"tags"`
-	Timeline        string       `json:"timeline"`         // empty = long-term
+	Title           string        `json:"title"`
+	Description     string        `json:"description"`
+	Weight          int           `json:"weight"` // 1–10; clamped to range
+	Tags            []string      `json:"tags"`
+	Timeline        string        `json:"timeline"`         // empty = long-term
 	ExtractedEvents []ParsedEvent `json:"extracted_events"` // calendar events with specific future dates
 	ExtractedTasks  []ParsedTask  `json:"extracted_tasks"`  // prep work that must start today
 }
