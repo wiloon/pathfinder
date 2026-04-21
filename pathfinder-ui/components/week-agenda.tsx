@@ -1,6 +1,6 @@
 'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWeekAgenda, updateTask, type WeekAgenda, type DayAgenda, type AgendaTask, type AgendaGoal, type AgendaEvent } from '@/lib/api';
+import { getWeekAgenda, updateTask, deleteTask, type WeekAgenda, type DayAgenda, type AgendaTask, type AgendaGoal, type AgendaEvent } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -26,7 +26,7 @@ function isFuture(dateStr: string): boolean {
   return dateStr >= new Date().toISOString().slice(0, 10);
 }
 
-function TaskRow({ task, onStatusChange }: { task: AgendaTask; onStatusChange: (id: number, status: string) => void }) {
+function TaskRow({ task, onStatusChange, onDelete }: { task: AgendaTask; onStatusChange: (id: number, status: string) => void; onDelete: (id: number) => void }) {
   const statusColors: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
     done: 'bg-green-100 text-green-800',
@@ -66,6 +66,9 @@ function TaskRow({ task, onStatusChange }: { task: AgendaTask; onStatusChange: (
             ↺
           </Button>
         )}
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => onDelete(task.id)} title="删除">
+          ✕
+        </Button>
       </div>
     </div>
   );
@@ -118,7 +121,7 @@ function EventRow({ event }: { event: AgendaEvent }) {
   );
 }
 
-function DaySection({ day, onTaskStatusChange }: { day: DayAgenda; onTaskStatusChange: (id: number, status: string) => void }) {
+function DaySection({ day, onTaskStatusChange, onTaskDelete }: { day: DayAgenda; onTaskStatusChange: (id: number, status: string) => void; onTaskDelete: (id: number) => void }) {
   const total = day.tasks.length + day.goals.length + day.events.length;
   const today = isToday(day.date);
   const future = isFuture(day.date);
@@ -145,7 +148,7 @@ function DaySection({ day, onTaskStatusChange }: { day: DayAgenda; onTaskStatusC
           {day.tasks.length > 0 && (
             <div className="py-1">
               {day.tasks.map(task => (
-                <TaskRow key={task.id} task={task} onStatusChange={onTaskStatusChange} />
+                <TaskRow key={task.id} task={task} onStatusChange={onTaskStatusChange} onDelete={onTaskDelete} />
               ))}
             </div>
           )}
@@ -183,6 +186,12 @@ export function WeekAgendaView() {
     onError: () => toast.error('更新失败'),
   });
 
+  const deleteTaskMutation = useMutation({
+    mutationFn: (id: number) => deleteTask(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['week-agenda'] }),
+    onError: () => toast.error('删除失败'),
+  });
+
   if (isLoading) return <div className="py-12 text-center text-muted-foreground text-sm">加载中...</div>;
   if (error || !data) return <div className="py-12 text-center text-muted-foreground text-sm">加载失败</div>;
 
@@ -190,10 +199,14 @@ export function WeekAgendaView() {
     updateTaskMutation.mutate({ id, status });
   };
 
+  const handleTaskDelete = (id: number) => {
+    deleteTaskMutation.mutate(id);
+  };
+
   return (
     <div className="space-y-3">
       {data.days.filter(day => (day.tasks?.length ?? 0) + (day.goals?.length ?? 0) + (day.events?.length ?? 0) > 0).map(day => (
-        <DaySection key={day.date} day={day} onTaskStatusChange={handleTaskStatusChange} />
+        <DaySection key={day.date} day={day} onTaskStatusChange={handleTaskStatusChange} onTaskDelete={handleTaskDelete} />
       ))}
 
       {data.unscheduled.length > 0 && (

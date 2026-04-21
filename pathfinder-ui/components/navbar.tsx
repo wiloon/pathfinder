@@ -34,7 +34,7 @@ export function Navbar() {
         <Link href="/" className="font-bold text-lg text-primary">Pathfinder</Link>
         {me && (
           <div className="flex items-center gap-4 ml-4">
-            <Link href="/today" className="text-sm font-medium hover:text-primary transition-colors">Today</Link>
+            <Link href="/tasks" className="text-sm font-medium hover:text-primary transition-colors">任务</Link>
             <Link href="/goals" className="text-sm font-medium hover:text-primary transition-colors">Goals</Link>
             <Link href="/events" className="text-sm font-medium hover:text-primary transition-colors">Events</Link>
             <Link href="/checkin" className="text-sm font-medium hover:text-primary transition-colors">Check-In</Link>

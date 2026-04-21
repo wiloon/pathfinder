@@ -23,19 +23,9 @@ func GetTodayPlan(c *gin.Context) {
 		Preload("Tasks").First(&plan).Error
 
 	if err != nil {
-		// No plan — generate one.
-		plan = storage.DailyPlan{UserID: userID, Date: today}
-		storage.DB.Create(&plan)
-
-		var goals []storage.Goal
-		storage.DB.Where("user_id = ? AND status = ?", userID, "active").Find(&goals)
-
-		tasks, _ := ai.GenerateInitialPlan(goals, nil, availableHours(userID), "09:00")
-		for i := range tasks {
-			tasks[i].PlanID = plan.ID
-			storage.DB.Create(&tasks[i])
-		}
-		plan.Tasks = tasks
+		// No plan for today — return empty plan without auto-generating tasks.
+		c.JSON(http.StatusOK, storage.DailyPlan{UserID: userID, Date: today, Tasks: []storage.Task{}})
+		return
 	}
 
 	// Sort tasks by sort_order.

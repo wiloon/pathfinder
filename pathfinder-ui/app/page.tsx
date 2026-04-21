@@ -14,7 +14,7 @@ export default function HomePage() {
     getGoals()
       .then((goals: Goal[]) => {
         if (goals && goals.length > 0) {
-          router.replace('/today');
+          router.replace('/tasks');
         } else {
           router.replace('/onboarding');
         }
