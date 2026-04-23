@@ -29,3 +29,20 @@ Creation only occurs after Step 2 confirmation.
 
 **Alternatives rejected:**
 - Parse-and-create in one endpoint — couples two concerns; prevents the preview/re-parse flow; creates junk data if the user abandons after parsing.
+
+---
+
+## Tasks Page Uses a Split-Panel Layout (Goals Left, Tasks Right)
+
+**Decision:** The `/tasks` page (`app/tasks/page.tsx`) is redesigned as a two-column layout.
+- **Left panel** (`w-72`): Goal list with full CRUD interaction (edit, delete) and click-to-filter. Clicking a Goal filters the right panel to tasks whose `goal_id` matches. Clicking the selected Goal again deselects (returns to "all tasks").
+- **Right panel** (`flex-1`): Daily task list, filtered or unfiltered depending on the left-panel selection.
+
+The `GoalCard` component and edit `Dialog` are extracted from `app/goals/page.tsx` into `components/goal-card.tsx` and `components/goal-edit-dialog.tsx` so the same components are shared between `/tasks` and `/goals` without duplication.
+
+**Rationale:** Users need context (which goal does this task serve?) while managing daily tasks. Showing Goals alongside tasks without navigating away reduces context-switching. A left-panel filter is a standard split-panel pattern (VS Code explorer, mail clients) — discoverable and low-friction. Extraction into shared components keeps `/goals` fully functional without copy-pasting logic.
+
+**Alternatives rejected:**
+- Keep Goals on a separate `/goals` page only — requires navigation to see goal context while working in `/tasks`; higher friction.
+- Embed a goal dropdown/select inside each Task card — adds noise to the task list; does not provide a goal-level overview.
+- Full inline goal editing without a dialog — too much vertical space in the left panel; the dialog (already proven in `/goals`) is the right scope for editing.

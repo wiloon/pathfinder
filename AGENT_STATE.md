@@ -15,7 +15,7 @@
 ## Current Focus
 
 **Active task:** None — awaiting instruction.  
-**Last completed:** #26 — `PATCH /api/agent/goals/:id` weight endpoint, 5 tests (2026-04-20).  
+**Last completed:** #28 — Tasks page split-panel (Goals left, Tasks right) (2026-04-22).  
 **Recommended next task:** `#24` — update `getGoals` response + frontend Goal type (expose weight, tags, timeline).
 
 **Blockers:** None.
@@ -123,6 +123,7 @@
 
 | Date | ADR | Summary |
 |---|---|---|
+| 2026-04-21 | [ADR-0007](docs/adr/0007-ux-patterns.md) | `/tasks` page uses split-panel layout: Goals left (filter + CRUD), Tasks right; `GoalCard` + edit dialog extracted as shared components |
 | 2026-04-20 | [ADR-0006](docs/adr/0006-planning-model.md) | `DailyAvailableHours` stored on `UserProfile` (default 8.0); passed to `GenerateInitialPlan` instead of hardcoded constant |
 | 2026-04-20 | [ADR-0005](docs/adr/0005-goal-model.md) | Goal weight 1–10 replaces `primary`/`secondary`; tags JSON array; `setPrimaryGoal` endpoint removed |
 | 2026-04-20 | [ADR-0008](docs/adr/0008-security-deferrals.md) | P1 security tasks (V1, V6, V8) deferred until tasks #16–#27 complete; resumption condition recorded |
@@ -163,10 +164,30 @@
 | 25 | Update AI prompt in MiniMaxProvider `GenerateInitialPlan` — use normalized weight percentages for time allocation across goals; pass user's `DailyAvailableHours` instead of hardcoded 8.0; remove `type`/`primary`/`secondary` references from prompt | P2 | #23, #27 | ⬜ Pending |
 | 26 | Add `PATCH /api/agent/goals/:id` — weight adjustment endpoint for OpenClaw (service token auth); accepts JSON `{"weight": N}` (validate 1–10); updates goal weight in DB; include tests | P2 | #23 | ✅ Done |
 | 27 | Add `DailyAvailableHours float64` (default 8.0) to `UserProfile`; update `CreateProfile`/`UpdateProfile` handlers to accept and validate the field (range 0.5–24.0); pass value to `GenerateInitialPlan` when creating initial plan on goal creation; update AutoMigrate | P2 | — | ✅ Done |
+| 28 | Redesign `/tasks` page as split-panel: extract `GoalCard` + edit dialog into shared components; refactor `app/goals/page.tsx` to import them; add Goals panel (left) + Task filter by Goal to `app/tasks/page.tsx` — [spec](docs/tasks/task-028-tasks-page-goals-panel.md) | P2 | #23 | ✅ Done |
 
 ---
 
 ## Session Memory
+
+### Session 2026-04-22 — #28 implementation
+
+- Created `components/goal-card.tsx`: exports `Goal` interface, `parseTags` helper, `GoalCard` component with new `selected` (ring highlight) and `onSelect` (click-to-filter) props; Edit/Delete buttons call `e.stopPropagation()` to prevent card click.
+- Created `components/goal-edit-dialog.tsx`: self-contained component with `useForm`, `updateGoal` mutation, `createEventQuick`/`createTaskQuick` mutations, and full AI-extract preview flow (events + tasks checklist). Resets form via `useEffect([goal?.id, open])`. Invalidates `['goals']` and `['today-plan']` internally; calls `onSuccess()` when done.
+- Refactored `app/goals/page.tsx`: removed 150+ lines of local GoalCard, dialog, form, and AI state; now imports from shared components. `/goals` page bundle dropped to 823 B (from ~209 kB page code).
+- Redesigned `app/tasks/page.tsx`: added `goal_id?: number` to Task interface; added `useQuery(['goals'])` and `deleteGoalMutation`; added `selectedGoalId` + edit state; split layout into `flex gap-6 max-w-6xl mx-auto` — left panel (`w-72`) shows Goal list with All-tasks chip and filter-on-click; right panel (`flex-1`) shows filtered `filteredTasks`; empty state message adapts to filter context. DnD reorder operates on full `tasks` array so sort_order is stable across filters.
+- `pnpm lint` ✅ `pnpm build` ✅ — all 14 pages, no type errors.
+
+---
+
+### Session 2026-04-21 — #28 planning
+
+- Analysed existing `/tasks` and `/goals` pages, `lib/api.ts`, storage models, and `GoalCard` / edit-dialog structure in `app/goals/page.tsx`.
+- Agreed split-panel layout: Goals left (`w-72`, full CRUD + click-to-filter), Tasks right (`flex-1`, filtered by `selectedGoalId`).
+- Decided `GoalCard` and edit dialog should be extracted as shared components (Phase 1) before redesigning `/tasks` (Phase 2).
+- No code changed this session. Created `docs/tasks/task-028-tasks-page-goals-panel.md`; added decision to ADR-0007; added task #28 to Progress Tracking.
+
+---
 
 ### Session 2026-04-20 — Harness Engineering document restructure
 

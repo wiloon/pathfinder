@@ -18,7 +18,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { getTodayPlan, updateTask, deleteTask, generatePlan } from '@/lib/api';
+import { getTodayPlan, updateTask, deleteTask, generatePlan, getGoals, deleteGoal } from '@/lib/api';
+import { GoalCard, Goal } from '@/components/goal-card';
+import { GoalEditDialog } from '@/components/goal-edit-dialog';
 import { AddGoalDialog } from '@/components/add-goal-dialog';
 import { WeekAgendaView } from '@/components/week-agenda';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,7 @@ interface Task {
   suggested_end?: string;
   status: string;
   sort_order: number;
+  goal_id?: number;
 }
 
 interface TodayPlan {
@@ -107,6 +110,9 @@ export default function TodayPage() {
   const queryClient = useQueryClient();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<'today' | 'week'>('week');
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null);
+  const [editGoal, setEditGoal] = useState<Goal | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data: plan, isLoading, error } = useQuery<TodayPlan>({
     queryKey: ['today-plan'],
@@ -115,6 +121,11 @@ export default function TodayPage() {
       setTasks(data.tasks || []);
       return data;
     },
+  });
+
+  const { data: goals = [] } = useQuery<Goal[]>({
+    queryKey: ['goals'],
+    queryFn: getGoals,
   });
 
   const updateTaskMutation = useMutation({
@@ -138,10 +149,25 @@ export default function TodayPage() {
     onError: () => toast.error('Failed to regenerate plan'),
   });
 
+  const deleteGoalMutation = useMutation({
+    mutationFn: deleteGoal,
+    onSuccess: () => {
+      toast.success('Goal deleted');
+      queryClient.invalidateQueries({ queryKey: ['goals'] });
+      setSelectedGoalId(null);
+    },
+    onError: () => toast.error('Failed to delete goal'),
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  // Derive filtered task list from the currently selected goal.
+  const filteredTasks = selectedGoalId !== null
+    ? tasks.filter(t => t.goal_id === selectedGoalId)
+    : tasks;
 
   const handleStatusChange = (id: number, status: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
@@ -153,6 +179,7 @@ export default function TodayPage() {
     deleteTaskMutation.mutate(id);
   };
 
+  // Reorder operates on the full tasks array so sort_order is stable across filters.
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -175,72 +202,117 @@ export default function TodayPage() {
   );
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold">任务</h1>
-          {plan?.date && view === 'today' && <p className="text-muted-foreground text-sm">{new Date(plan.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>}
+    <div className="flex gap-6 max-w-6xl mx-auto">
+
+      {/* LEFT: Goals panel */}
+      <div className="w-72 shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Goals</h2>
+          <AddGoalDialog trigger={<Button variant="outline" size="sm">Add</Button>} />
         </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/events">Add Event</Link>
-          </Button>
-          <AddGoalDialog
-            trigger={<Button variant="outline" size="sm">Add Goal</Button>}
-          />
-          <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
-            {generateMutation.isPending ? 'Regenerating...' : 'Regenerate Plan'}
-          </Button>
+
+        {/* "All tasks" filter chip */}
+        <button
+          className={`w-full text-left px-3 py-2 rounded-md text-sm mb-2 transition-colors ${
+            selectedGoalId === null
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-muted'
+          }`}
+          onClick={() => setSelectedGoalId(null)}
+        >
+          All tasks
+        </button>
+
+        <div className="space-y-2">
+          {goals.map(goal => (
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              selected={selectedGoalId === goal.id}
+              onSelect={id => setSelectedGoalId(prev => prev === id ? null : id)}
+              onEdit={g => { setEditGoal(g); setEditOpen(true); }}
+              onDelete={id => deleteGoalMutation.mutate(id)}
+            />
+          ))}
         </div>
       </div>
 
-      {/* View toggle */}
-      <div className="flex gap-1 mb-5 bg-muted p-1 rounded-lg w-fit">
-        <button
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            view === 'today' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setView('today')}
-        >
-          今天
-        </button>
-        <button
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            view === 'week' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setView('week')}
-        >
-          本周
-        </button>
-      </div>
-
-      {view === 'week' ? (
-        <WeekAgendaView />
-      ) : tasks.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground mb-4">No tasks for today.</p>
-            <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
-              Generate Plan
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {tasks.map(task => (
-                  <SortableTask key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-          <div className="mt-6 text-sm text-muted-foreground text-center">
-            {tasks.filter(t => t.status === 'done').length} / {tasks.length} tasks completed
+      {/* RIGHT: Tasks panel */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold">任务</h1>
+            {plan?.date && view === 'today' && <p className="text-muted-foreground text-sm">{new Date(plan.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>}
           </div>
-        </>
-      )}
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/events">Add Event</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+              {generateMutation.isPending ? 'Regenerating...' : 'Regenerate Plan'}
+            </Button>
+          </div>
+        </div>
+
+        {/* View toggle */}
+        <div className="flex gap-1 mb-5 bg-muted p-1 rounded-lg w-fit">
+          <button
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              view === 'today' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setView('today')}
+          >
+            今天
+          </button>
+          <button
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              view === 'week' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setView('week')}
+          >
+            本周
+          </button>
+        </div>
+
+        {view === 'week' ? (
+          <WeekAgendaView />
+        ) : filteredTasks.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground mb-4">
+                {selectedGoalId ? 'No tasks for this goal today.' : 'No tasks for today.'}
+              </p>
+              {!selectedGoalId && (
+                <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+                  Generate Plan
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={filteredTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {filteredTasks.map(task => (
+                    <SortableTask key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+            <div className="mt-6 text-sm text-muted-foreground text-center">
+              {filteredTasks.filter(t => t.status === 'done').length} / {filteredTasks.length} tasks completed
+            </div>
+          </>
+        )}
+      </div>
+
+      <GoalEditDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        goal={editGoal}
+        onSuccess={() => setEditOpen(false)}
+      />
     </div>
   );
 }
